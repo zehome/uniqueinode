@@ -1,33 +1,47 @@
 package main
 
 import (
-	"fmt"
 	"flag"
+	"fmt"
 	"log"
-	"syscall"
+	"os"
 	"path/filepath"
+	"syscall"
+	"time"
 
-	"github.com/karrick/godirwalk"
+	humanize "github.com/dustin/go-humanize"
+	godirwalk "github.com/karrick/godirwalk"
+	str2duration "github.com/xhit/go-str2duration/v2"
 )
 
 var inodeset = make(map[uint64]struct{})
-
+var sizestats = make(map[bool]uint64)
 
 func main() {
 	path := flag.String("path", ".", "path where to count for unique inodes")
+	olderthan := flag.String("olderthan", "1y", "count file size older/more recent than the specified interval")
 	flag.Parse()
 	abspath, err := filepath.Abs(*path)
-	
+
+	interval, err := str2duration.ParseDuration(*olderthan)
+	if err != nil {
+		panic(err)
+	}
+
 	err = godirwalk.Walk(abspath, &godirwalk.Options{
 		Callback: func(osPathname string, de *godirwalk.Dirent) error {
 			if de.IsRegular() {
-				var stat syscall.Stat_t
-				//fmt.Println("osPath:", osPathname)
-				errstat := syscall.Stat(osPathname, &stat)
+				stats, errstat := os.Stat(osPathname)
+				st := stats.Sys().(*syscall.Stat_t)
 				if errstat != nil {
 					fmt.Println("stat failed:", errstat)
 				} else {
-					inodeset[stat.Ino] = struct{}{}					
+					inodeset[st.Ino] = struct{}{}
+					mtime := stats.ModTime()
+					isitold := time.Now().Sub(mtime) > interval
+					sizestats[isitold] += uint64(stats.Size())
+					// mtime := time.Unix(stat.Ctim.Sec, stat.Ctim.NSec)
+					// fmt.Println("f:", osPathname, "mtime:", mtime)
 				}
 			}
 			return nil
@@ -42,4 +56,5 @@ func main() {
 	}
 
 	fmt.Printf("%s: %d unique inodes\n", abspath, len(inodeset))
+	fmt.Printf("%s: > %s: %s < %s: %s\n", abspath, *olderthan, humanize.Bytes(sizestats[false]), *olderthan, humanize.Bytes(sizestats[true]))
 }
