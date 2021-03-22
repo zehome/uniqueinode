@@ -19,7 +19,7 @@ var sizestats = make(map[bool]uint64)
 
 func main() {
 	path := flag.String("path", ".", "path where to count for unique inodes")
-	olderthan := flag.String("olderthan", "1y", "count file size older/more recent than the specified interval")
+	olderthan := flag.String("olderthan", "365d", "count file size older/more recent than the specified interval")
 	flag.Parse()
 	abspath, err := filepath.Abs(*path)
 
@@ -36,12 +36,12 @@ func main() {
 				if errstat != nil {
 					fmt.Println("stat failed:", errstat)
 				} else {
-					inodeset[st.Ino] = struct{}{}
-					mtime := stats.ModTime()
-					isitold := time.Now().Sub(mtime) > interval
-					sizestats[isitold] += uint64(stats.Size())
-					// mtime := time.Unix(stat.Ctim.Sec, stat.Ctim.NSec)
-					// fmt.Println("f:", osPathname, "mtime:", mtime)
+					if _, ok := inodeset[st.Ino]; ! ok {
+						inodeset[st.Ino] = struct{}{}
+						mtime := stats.ModTime()
+						isitold := time.Now().Sub(mtime) > interval
+						sizestats[isitold] += uint64(stats.Size())
+					}
 				}
 			}
 			return nil
